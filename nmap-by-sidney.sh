@@ -1,12 +1,13 @@
 #!/bin/sh
 #
-# nmapFullVulnScan.sh - Two-phase scan: discover all open ports, then run
-# version detection, default scripts, and vuln scripts on those ports.
+# nmapFullVulnScan.sh - Three-phase scan: discover all open ports, then run
+# version detection, default scripts, vuln scripts, and vulners (CVE) in separate files.
 #
 # Usage: ./nmapFullVulnScan.sh <TARGET> [OUTPUT_DIR]
 #
 # Phase 1: Full port scan (-p-) to identify all open ports
-# Phase 2: On open ports: -sV (version) + -sC (default scripts) + --script vuln
+# Phase 2: On open ports: -sV (version) + -sC (default scripts) + --script vuln (excluding vulners)
+# Phase 3: Vulners (CVE) scan on open ports, output to separate file
 #
 
 # Colors
@@ -23,7 +24,8 @@ usage() {
     printf "  OUTPUT_DIR - Optional. Default: <TARGET>/nmap\n"
     printf "\n"
     printf "Phase 1: Scans all 65535 ports to identify open ports\n"
-    printf "Phase 2: On open ports runs: version detection, default scripts, vuln scripts\n"
+    printf "Phase 2: Version detection, default scripts, vuln scripts (excl. vulners)\n"
+    printf "Phase 3: Vulners (CVE) scan → separate file\n"
     printf "${NC}\n"
     exit 1
 }
@@ -111,7 +113,20 @@ main() {
 
     "${NMAPPATH}" -Pn -sV -sC --script "vuln and not vulners" -p"${openPorts}" --open \
         -oN "nmap/VersionScriptVuln_${HOST}.nmap" \
+        -oX "nmap/VersionScriptVuln_${HOST}.xml" \
         "${HOST}"
+
+    # --- Phase 3: Vulners (CVE) scan in separate file ---
+    if [ -f /usr/share/nmap/scripts/vulners.nse ]; then
+        echo
+        printf "${GREEN}----- Phase 3: Vulners (CVE) scan on open ports -----${NC}\n\n"
+        printf "${YELLOW}Running: -sV --script vulners -p ${openPorts}${NC}\n\n"
+        "${NMAPPATH}" -Pn -sV --script vulners --script-args mincvss=7.0 -p"${openPorts}" --open \
+            -oN "nmap/Vulners_${HOST}.nmap" \
+            "${HOST}"
+    else
+        printf "${YELLOW}Phase 3 skipped: vulners.nse not found. Install from https://github.com/vulnersCom/nmap-vulners${NC}\n"
+    fi
 
     footer "${elapsedStart}"
 }
